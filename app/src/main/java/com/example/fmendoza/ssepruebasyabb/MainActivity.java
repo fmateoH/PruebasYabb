@@ -1,16 +1,18 @@
 package com.example.fmendoza.ssepruebasyabb;
 
 import android.os.StrictMode;
+import android.support.annotation.WorkerThread;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Log;
 
-import com.tylerjroach.eventsource.EventSource;
-import com.tylerjroach.eventsource.EventSourceHandler;
-import com.tylerjroach.eventsource.MessageEvent;
+import com.here.oksse.*;
+import okhttp3.Request;
+import okhttp3.Response;
 
-import java.util.HashMap;
-import java.util.Map;
+import org.json.JSONException;
+import org.json.JSONObject;
+
 
 public class MainActivity extends AppCompatActivity {
 
@@ -27,58 +29,71 @@ public class MainActivity extends AppCompatActivity {
     }
 
 
-    private SSEHandler sseHandler = new SSEHandler();
-    EventSource eventSource = null;
-
+private ServerSentEvent sse;
 
     private void startEventSource() {
-        Map<String, String> headers = new HashMap<String, String>();
-        eventSource = new EventSource.Builder("http://34.239.25.138:9197/cranes/7fbc08a4-0820-4a2d-b633-2e327acdd40c/event/suscribe")
-                .eventHandler(sseHandler)
-                .headers(headers)
-                .build();
-        eventSource.connect();
+        String path = "http://34.239.25.138:9197/cranes/7fbc08a4-0820-4a2d-b633-2e327acdd40c/event/suscribe";
+        Request request = new Request.Builder().url(path).build();
+        OkSse okSse = new OkSse();
+        sse = okSse.newServerSentEvent(request, new ServerSentEvent.Listener() {
+
+            @Override
+            public Request onPreRetry(ServerSentEvent sse, Request originalRequest) {
+                return null;
+            }
+
+            @Override
+            public void onOpen(ServerSentEvent sse, Response response) {
+                Log.v("SSE Connected", "True");
+            }
+
+            @Override
+            public void onMessage(ServerSentEvent sse, String id, String event, String message) {
+                // When a message is received
+                Log.v("Event received", event);
+                Log.v("Message received", message);
+                JSONObject json = null;
+                try {
+                    json = new JSONObject(message);
+                    Log.v("Folio received", (String) json.get("folio"));
+                } catch (JSONException e) {
+                    e.printStackTrace();
+                }
+            }
+
+            @WorkerThread
+            @Override
+            public void onComment(ServerSentEvent sse, String comment) {
+                // When a comment is received
+                Log.v("SSE Comment", comment);
+            }
+
+            @WorkerThread
+            @Override
+            public boolean onRetryTime(ServerSentEvent sse, long milliseconds) {
+                return true; // True to use the new retry time received by SSE
+            }
+
+            @WorkerThread
+            @Override
+            public boolean onRetryError(ServerSentEvent sse, Throwable throwable, Response response) {
+                return true; // True to retry, false otherwise
+            }
+
+            @WorkerThread
+            @Override
+            public void onClosed(ServerSentEvent sse) {
+                // Channel closed
+                Log.v("SSE Closed", "reconnect? ");
+            }
+
+            ;
+        });
     }
 
     private void stopEventSource() {
-        if (eventSource != null)
-            eventSource.close();
-        sseHandler = null;
-    }
-
-
-private class SSEHandler implements EventSourceHandler {
-
-    public SSEHandler() {
-    }
-
-    @Override
-    public void onConnect() {
-        Log.v("SSE Connected", "True");
-    }
-
-    @Override
-    public void onMessage(String event, MessageEvent message) {
-        Log.v("SSE Message", event);
-        //Log.v("SSE Message: ", message.lastEventId);
-        Log.v("SSE Message: ", message.data);
-    }
-
-    @Override
-    public void onComment(String comment) {
-        //comments only received if exposeComments turned on
-        Log.v("SSE Comment", comment);
-    }
-
-    @Override
-    public void onError(Throwable t) {
-        //ignore ssl NPE on eventSource.close()
-    }
-
-    @Override
-    public void onClosed(boolean willReconnect) {
-        Log.v("SSE Closed", "reconnect? " + willReconnect);
-    }
+        if (sse != null)
+            sse.close();
     }
 
 }
